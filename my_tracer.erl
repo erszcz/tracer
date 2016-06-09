@@ -34,16 +34,26 @@ tracer_monitor(Pid) ->
                       [Pid, Info])
     end.
 
+handler({trace_ts, _Pid, call, _MFA, TS} = Trace, Out) ->
+    print(Out, "~s ~s", [format_timestamp(TS), format_call(strip_ts(Trace))]),
+    Out;
 handler({trace, _Pid, call, _MFA} = Trace, Out) ->
     print(Out, "~s", [format_call(Trace)]),
     Out;
 
+handler({trace_ts, _Pid, return_from, _MFA, _Ret, TS} = Trace, Out) ->
+    print(Out, "~s ~s", [format_timestamp(TS),
+                         format_return_from(strip_ts(Trace))]),
+    Out;
 handler({trace, _Pid, return_from, _MFA, _Ret} = Trace, Out) ->
     print(Out, "~s", [format_return_from(Trace)]),
     Out;
 
 handler(Trace, Out) ->
     pass_to_dbg(Trace, Out).
+
+strip_ts({trace_ts, Pid, call, MFA, _TS})             -> {trace, Pid, call, MFA};
+strip_ts({trace_ts, Pid, return_from, MFA, Ret, _TS}) -> {trace, Pid, return_from, MFA, Ret}.
 
 format_call({trace, Pid, call, {M, F, Args}} = Trace) ->
     [ io_lib:format("~p call ~s:~s/~b:\n", [Pid, M, F, length(Args)]),
@@ -110,3 +120,14 @@ print(Handle, Fmt, Args) ->
 
 enum(L) ->
     lists:zip(lists:seq(1, length(L)), L).
+
+format_timestamp(TS) -> format_timestamp(TS, micro).
+
+format_timestamp({_, _, Micro} = TS, Precision) ->
+    {_, {H,M,S}} = calendar:now_to_local_time(TS),
+    [io_lib:format("~2.10B:~2.10.0B:~2.10.0B", [H, M, S]),
+     case Precision of
+         seconds -> "";
+         milli   -> io_lib:format( ".~3.10.0B", [erlang:round(Micro / 1000)]);
+         micro   -> io_lib:format( ".~6.10.0B", [Micro])
+     end].
