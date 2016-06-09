@@ -4,8 +4,6 @@
 
 -define(il2b, iolist_to_binary).
 
-%% Listen carefully, since I won't repeat.
-%%
 %% Default dbg:dhandler/2 is nice,
 %% but when you want to use domain knowledge
 %% or discard some of the data (like too long arg lists / retvals)
