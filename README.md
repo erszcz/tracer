@@ -24,7 +24,7 @@ and never be received - you won't know a crash happened.
 
 So, it's best to setup a process which will monitor the trace handler
 and print any 'DOWN' messages it receives.
-This is be done in my\_tracer:start/0.
+This is done in my\_tracer:start/0.
 
 ## Usage
 
