@@ -22,6 +22,11 @@
 %% and print any 'DOWN' messages it receives.
 %% This will be done in my_tracer:start/0.
 start() ->
+    %% If you want to trace from a `mongooseimctl debug` shell,
+    %% then use this variant.
+    %% Otherwise, the traces will go to log/erlang.log.* files,
+    %% not to the console.
+    %{ok, Tracer} = dbg:tracer(process, {fun ?MODULE:handler/2, standard_io}),
     {ok, Tracer} = dbg:tracer(process, {fun ?MODULE:handler/2, user}),
     { {tracer, Tracer},
       {tracer_monitor, spawn_link(?MODULE, tracer_monitor, [Tracer])} }.
