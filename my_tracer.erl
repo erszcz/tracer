@@ -4,6 +4,16 @@
 
 -define(il2b, iolist_to_binary).
 
+-ifdef(OTP_RELEASE).
+	%% For some time this clause will be implicit, since OTP_RELEASE was introduced in 21.
+	-if(?OTP_RELEASE >= 21).
+    -define(STACKTRACE(Type, Reason, Stacktrace), Type:Reason:Stacktrace ->).
+	-endif.
+-else.
+    %% OTP 20 or lower.
+    -define(STACKTRACE(Type, Reason, Stacktrace), Type:Reason -> Stacktrace = erlang:get_stacktrace(), ).
+-endif.
+
 %% Default dbg:dhandler/2 is nice,
 %% but when you want to use domain knowledge
 %% or discard some of the data (like too long arg lists / retvals)
@@ -39,22 +49,35 @@ tracer_monitor(Pid) ->
                       [Pid, Info])
     end.
 
-handler({trace_ts, _Pid, call, _MFA, TS} = Trace, Out) ->
-    print(Out, "~s ~s", [format_timestamp(TS), format_call(strip_ts(Trace))]),
+handler(Trace, Out) ->
+    try
+        handler_(Trace, Out)
+    catch ?STACKTRACE(E, R, Stacktrace)
+        exit({E, R, Stacktrace})
+    end.
+
+handler_({trace_ts, _Pid, call, _MFA, TS} = Trace0, Out) ->
+    Trace1 = strip_ts(Trace0),
+    Trace = translate_args(Trace1),
+    print(Out, "~s ~s", [format_timestamp(TS), format_call(Trace)]),
     Out;
-handler({trace, _Pid, call, _MFA} = Trace, Out) ->
+handler_({trace, _Pid, call, _MFA} = Trace0, Out) ->
+    Trace = translate_args(Trace0),
     print(Out, "~s", [format_call(Trace)]),
     Out;
 
-handler({trace_ts, _Pid, return_from, _MFA, _Ret, TS} = Trace, Out) ->
+handler_({trace_ts, _Pid, return_from, _MFA, _Ret, TS} = Trace0, Out) ->
+    Trace1 = strip_ts(Trace0),
+    Trace = translate_ret(Trace1),
     print(Out, "~s ~s", [format_timestamp(TS),
-                         format_return_from(strip_ts(Trace))]),
+                         format_return_from(Trace)]),
     Out;
-handler({trace, _Pid, return_from, _MFA, _Ret} = Trace, Out) ->
+handler_({trace, _Pid, return_from, _MFA, _Ret} = Trace0, Out) ->
+    Trace = translate_ret(Trace0),
     print(Out, "~s", [format_return_from(Trace)]),
     Out;
 
-handler(Trace, Out) ->
+handler_(Trace, Out) ->
     pass_to_dbg(Trace, Out).
 
 strip_ts({trace_ts, Pid, call, MFA, _TS})             -> {trace, Pid, call, MFA};
@@ -84,6 +107,10 @@ translations() ->
      fun flatten_if_jid/1,
      fun flatten_if_sending_iolist/1].
 
+flatten_if_state(State) when is_tuple(State), element(1, State) == state ->
+    StateL = erlang:tuple_to_list(State),
+    [JID] = [ Field || Field = {jid, _, _, _, _, _, _} <- StateL ],
+    {state, flatten_if_jid(JID)};
 flatten_if_state(State) when is_tuple(State), element(1, State) == state -> state;
 flatten_if_state(Arg) -> Arg.
 
@@ -92,7 +119,7 @@ flatten_if_fsm_next_state4({next_state, StateName, State, Timeout}) ->
 flatten_if_fsm_next_state4(Arg) -> Arg.
 
 flatten_if_jid({jid, _, _, _, _, _, _} = JID) ->
-    <<"jid:", (jlib:jid_to_binary(JID))/bytes>>;
+    <<"jid:", (jid_to_binary(JID))/bytes>>;
 flatten_if_jid(NotAJID) -> NotAJID.
 
 flatten_if_sending_iolist({trace, Pid, call, {ejabberd_c2s, send_text, [A1, IOList]}}) ->
@@ -136,3 +163,6 @@ format_timestamp({_, _, Micro} = TS, Precision) ->
          milli   -> io_lib:format( ".~3.10.0B", [erlang:round(Micro / 1000)]);
          micro   -> io_lib:format( ".~6.10.0B", [Micro])
      end].
+
+jid_to_binary({jid, _, _, _, LUser, LServer, LRes}) ->
+    <<LUser/bytes, "@", LServer/bytes, "/", LRes/bytes>>.
