@@ -57,7 +57,7 @@ handler(Trace, Out) ->
         exit({E, R, Stacktrace})
     end.
 
-handler_(TS, {trace, _, _, _} = Trace0) ->
+handler_(TS, {trace, _, call, _} = Trace0) ->
     Trace = translate_args(Trace0),
     [ [ [format_timestamp(TS), " "] || TS /= no_ts ], format_call(Trace) ];
 handler_(TS, {trace, _Pid, return_from, _MFA, _Ret} = Trace0) ->
