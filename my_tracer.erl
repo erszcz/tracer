@@ -51,43 +51,40 @@ tracer_monitor(Pid) ->
 
 handler(Trace, Out) ->
     try
-        handler_(Trace, Out)
+        print(Out, "~s\n", [handler_(Trace)]),
+        Out
     catch ?STACKTRACE(E, R, Stacktrace)
         exit({E, R, Stacktrace})
     end.
 
-handler_({trace_ts, _Pid, call, _MFA, TS} = Trace0, Out) ->
-    Trace1 = strip_ts(Trace0),
-    Trace = translate_args(Trace1),
-    print(Out, "~s ~s", [format_timestamp(TS), format_call(Trace)]),
-    Out;
-handler_({trace, _Pid, call, _MFA} = Trace0, Out) ->
+handler_(TS, {trace, _, _, _} = Trace0) ->
     Trace = translate_args(Trace0),
-    print(Out, "~s", [format_call(Trace)]),
-    Out;
-
-handler_({trace_ts, _Pid, return_from, _MFA, _Ret, TS} = Trace0, Out) ->
-    Trace1 = strip_ts(Trace0),
-    Trace = translate_ret(Trace1),
-    print(Out, "~s ~s", [format_timestamp(TS),
-                         format_return_from(Trace)]),
-    Out;
-handler_({trace, _Pid, return_from, _MFA, _Ret} = Trace0, Out) ->
+    [ [ [format_timestamp(TS), " "] || TS /= no_ts ], format_call(Trace) ];
+handler_(TS, {trace, _Pid, return_from, _MFA, _Ret} = Trace0) ->
     Trace = translate_ret(Trace0),
-    print(Out, "~s", [format_return_from(Trace)]),
-    Out;
+    [ [ [format_timestamp(TS), " "] || TS /= no_ts ], format_return_from(Trace)].
 
-handler_(Trace, Out) ->
-    pass_to_dbg(Trace, Out).
+handler_({trace_ts, _Pid, call, _MFA, TS} = Trace) ->
+    handler_(TS, strip_ts(Trace));
+handler_({trace, _Pid, call, _MFA} = Trace) ->
+    handler_(no_ts, Trace);
+
+handler_({trace_ts, _Pid, return_from, _MFA, _Ret, TS} = Trace) ->
+    handler_(TS, strip_ts(Trace));
+handler_({trace, _Pid, return_from, _MFA, _Ret} = Trace) ->
+    handler_(no_ts, Trace);
+
+handler_(Trace) ->
+    io_lib:format("~p", [Trace]).
 
 strip_ts({trace_ts, Pid, call, MFA, _TS})             -> {trace, Pid, call, MFA};
 strip_ts({trace_ts, Pid, return_from, MFA, Ret, _TS}) -> {trace, Pid, return_from, MFA, Ret}.
 
-format_call({trace, Pid, call, {M, F, Args}} = Trace) ->
+format_call({trace, Pid, call, {M, F, Args}}) ->
     [ io_lib:format("~p call ~s:~s/~b:\n", [Pid, M, F, length(Args)]),
       [ io_lib:format("  arg ~b: ~p\n", [I, A]) || {I, A} <- enum(Args) ] ].
 
-format_return_from({trace, Pid, return_from, {M, F, Arity}, Ret} = Trace) ->
+format_return_from({trace, Pid, return_from, {M, F, Arity}, Ret}) ->
     [ io_lib:format("~p returned from ~s:~s/~b\n  -> ~p\n",
                     [Pid, M, F, Arity, Ret]) ].
 
@@ -102,10 +99,12 @@ translate_one(Val) ->
     lists:foldl(fun (F, AccV) -> F(AccV) end, Val, translations()).
 
 translations() ->
-    [fun flatten_if_state/1,
-     fun flatten_if_fsm_next_state4/1,
-     fun flatten_if_jid/1,
-     fun flatten_if_sending_iolist/1].
+    [
+     %fun flatten_if_state/1,
+     %fun flatten_if_fsm_next_state4/1,
+     %fun flatten_if_jid/1,
+     %fun flatten_if_sending_iolist/1
+    ].
 
 flatten_if_state(State) when is_tuple(State), element(1, State) == state ->
     StateL = erlang:tuple_to_list(State),
